@@ -26,8 +26,10 @@ Every agent and contributor working in this repo MUST follow them.
 
 ## 4. Branch
 
-- Work stays on the local feature branch (currently `emre-onboarding`).
-- Do not merge into or branch from `main` without explicit human instruction.
+- Work happens on the local **`copilot`** branch.
+- `copilot` is branched from **`main`** — always branch from `main`, never from
+  `emre-onboarding` or other feature branches.
+- Do not merge into or push `copilot` without explicit human instruction.
 
 ---
 
