@@ -207,6 +207,9 @@ dmypy.json
 
 # other
 CLAUDE.md
+
+# local-only: personal pip env for smoke-testing the copilot on a non-conda laptop.
+/requirements.txt
 # MacOS
 .DS_Store
 
