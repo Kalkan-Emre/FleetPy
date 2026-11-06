@@ -24,3 +24,6 @@ dependencies:
     - requests
     - ipykernel
     - nbformat>=4.2.0
+    # fleetpy_copilot test deps
+    - pytest
+    - hypothesis

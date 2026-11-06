@@ -23,6 +23,15 @@ Every agent and contributor working in this repo MUST follow them.
 - Restrict modifications to the `docs/` and `fleetpy_copilot/` (copilot) folders.
 - Do **not** touch core `src/`, configs, or existing tests outside the copilot package.
   Revert any accidental change outside scope immediately.
+- **Dependency exception.** If the copilot gains a genuine new dependency (runtime or
+  test), you *may* update the shared dependency manifests (`environment.yml` for conda,
+  `requirements.txt` for local pip) so both the conda and pip environments can run the
+  suite. This is the **only** sanctioned reason to edit a file outside `docs/`/`fleetpy_copilot/`.
+  Before doing so, confirm the dependency is **really needed** — e.g. a test module
+  imports it at collection time, so omitting it would break
+  `.venv/bin/python -m pytest fleetpy_copilot/tests -q` on an environment that lacks it.
+  Prefer declaring it in `fleetpy_copilot/requirements-test.txt` (in scope) as well, and
+  keep the manifest edit minimal (just the new line).
 
 ## 4. Branch
 
