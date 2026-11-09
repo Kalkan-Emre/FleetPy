@@ -218,3 +218,5 @@ CLAUDE.md
 
 # tensorflow in ml_gym
 src/ml_gym/tensorboard/*
+# SDD implementation-loop scratch reports
+fleetpy_copilot/.sdd-loop/

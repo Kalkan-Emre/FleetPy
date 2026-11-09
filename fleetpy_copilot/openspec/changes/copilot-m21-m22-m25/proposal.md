@@ -21,11 +21,11 @@ Confirm the suspected **false-skip** in `tests/test_providers.py::_hai_reachable
 
 **M2.1 — prompt tuning + determinism + repair cap:**
 - Tune the system/user prompts in `_prompting.py` (grounding in the closed vocabulary).
-- Add `temperature=0` to the providers for reproducible output. **BREAKING (internal):** provider constructors gain a `temperature` field and send it in the request body — within the stateless `Provider` contract; the `{param:value}` return shape is unchanged.
+- Add `temperature=0` for reproducible output **on the OpenAI-compatible provider only** (hai + OpenAI). **BREAKING (internal):** `OpenAICompatProvider`'s constructor gains a `temperature` field sent in the body. The **Anthropic provider does NOT send `temperature`** — current Claude models reject it with a 400 (API version 2026-10-21). Verified: hai accepts `temperature=0` (HTTP 200) and is deterministic. The `{param:value}` return shape is unchanged.
 - Lower the inner repair cap to **max 2 LLM calls/turn** (`generate_config` default `max_repairs` 2 → 1) and fix the "budget exhausted" test.
 
 **M2.2 — baseline harness / scoreboard (new):**
-- Reverse-engineer one NL prompt per **solver-free** config among the 47 `studies/*/scenarios/*.csv` seeds.
+- Reverse-engineer one NL prompt per config in the **verified solver-free corpus** (`_fixtures.SOLVER_FREE_DRYRUN_PAIRS`; the "47 CSVs" is a raw count — most are solver-based `GUROBI_PAIRS` or out-of-schema `KNOWN_VOCAB_GAP_PAIRS` and are excluded).
 - Run each through `generate_config`, record **dry-run pass/fail** + **per-param precision/recall**, emit a scoreboard.
 - **Run mode (Option 2):** the everyday pytest suite stays deterministic/offline on `MockProvider`; the full live run against **hai** is an **opt-in** entry point (not CI). Goal: prove we can call the real LLM and drive the inner loop end-to-end.
 
@@ -45,7 +45,7 @@ Confirm the suspected **false-skip** in `tests/test_providers.py::_hai_reachable
 
 ## Scope & Impact
 
-**Modules touched (all under `fleetpy_copilot/`):** `_prompting.py` (prompts + `PROMPT_VERSION`), `providers.py` (temperature), `provider.py` (protocol signature if temperature is threaded), `generate.py` (`max_repairs` default), `tests/` (coverage repairs + new harness tests), a new harness module + an opt-in live runner, and a prompt changelog file. New docs/report go under a temp md file for the loop and, if numbers land, a note in `../docs/copilot/05`.
+**Modules touched (all under `fleetpy_copilot/`):** `_prompting.py` (prompts + `PROMPT_VERSION`), `providers.py` (temperature on `OpenAICompatProvider` only), `generate.py` (`max_repairs` default), `tests/` (coverage repairs + new harness tests), a new `eval/` harness module + an opt-in live runner, and a prompt changelog file. `provider.py` is unchanged (temperature is a concrete-provider constructor detail, not a protocol param). New docs/report go under a temp md file for the loop and, if numbers land, a note in `../docs/copilot/05`.
 
 **Invariants preserved:**
 - **FleetPy `src/` stays untouched** (read-only import only).

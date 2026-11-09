@@ -20,9 +20,9 @@
 
 ## 2. providers — determinism — M2.1 (ref: prompt-tuning)
 
-- [ ] 2.1 Add `temperature` field (default `0`) to `OpenAICompatProvider` and `AnthropicProvider`; include it in the request body
-- [ ] 2.2 Decide/keep `Provider` protocol as constructor-only for temperature (resolve the design open question); keep return = plain dict
-- [ ] 2.3 Provider contract tests: body includes `temperature=0` by default; overridable; MockProvider unaffected; dict-return unchanged
+- [ ] 2.1 Add `temperature` field (default `0`) to `OpenAICompatProvider`; include it in the request body. Do NOT add it to `AnthropicProvider`'s body (current Claude models 400 on `temperature`; verified hai accepts it)
+- [ ] 2.2 Keep the `Provider` protocol unchanged (temperature is a concrete-provider constructor detail, not a `generate()` param); return stays a plain dict
+- [ ] 2.3 Provider contract tests: OpenAI-compatible body includes `temperature=0` by default + overridable; `AnthropicProvider` body has NO `temperature` key; MockProvider unaffected; dict-return unchanged
 
 ## 3. generate/orchestration — repair cap — M2.1 (ref: repair-cap)
 
@@ -33,10 +33,11 @@
 ## 4. eval/baseline-harness — M2.2 (ref: baseline-harness)
 
 - [ ] 4.1 Fix the NL-prompt derivation rule per seed config (template); record it in the loop report for reproducibility
-- [ ] 4.2 Build `eval/` harness: select solver-free seeds, derive prompt, run `generate_config`, score dry-run pass + per-param precision/recall, emit scoreboard (including `PROMPT_VERSION`)
-- [ ] 4.3 Add opt-in live entry point (runs only when invoked; default suite stays MockProvider/offline)
-- [ ] 4.4 Harness tests (MockProvider): per-config row shape · solver-free filtering visible · no validation/dry-run bypass
-- [ ] 4.5 Run full suite (offline) → green checkpoint
+- [ ] 4.2 Build the eval corpus from `_fixtures.SOLVER_FREE_DRYRUN_PAIRS` (cross-check CLEAN_ACCEPT/ALL_ROWS_CLEAN); reuse `_fixtures.load_merged`; EXCLUDE `GUROBI_PAIRS` + `KNOWN_VOCAB_GAP_PAIRS`; score validate-clean and dry-run-pass as DISTINCT columns (note rpp dry-runs but fails validate); use row 0 for the IR pair
+- [ ] 4.3 Build `eval/` harness: derive prompt, run `generate_config`, score dry-run pass + validate-clean + per-param precision/recall, emit scoreboard (including `PROMPT_VERSION`)
+- [ ] 4.4 Add opt-in live entry point (runs only when invoked; default suite stays MockProvider/offline); record transient per-config failures and continue (don't abort)
+- [ ] 4.5 Harness tests (MockProvider): per-config row shape · corpus excludes solver/vocab-gap pairs (visible) · dry-run vs validate distinct · no validation bypass
+- [ ] 4.6 Run full suite (offline) → green checkpoint
 
 ## 5. observe — live end-to-end on hai (ref: baseline-harness)
 
