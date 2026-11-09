@@ -1,0 +1,169 @@
+name: spec-driven-development
+version: 1
+description: Spec-driven development for the FleetPy Config Copilot (single
+  in-tree package, local-only — no component repos, no PRs/push)
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: High-level description of the change, its motivation, and scope
+    template: proposal.md
+    requires: []
+    instruction: |
+      Create the proposal document that establishes WHY this change is needed.
+
+      ## Project context (read this first)
+
+      This is the **FleetPy Config Copilot** — a single, in-tree Python package at
+      `fleetpy_copilot/` that imports FleetPy (`src/`) READ-ONLY and turns natural
+      language into validated FleetPy config CSVs. There are **no separate component
+      repos** and **no `acd/` directory**: the authoritative design docs live in
+      `../docs/copilot/` (relative to this package). Before writing, read:
+      - `../docs/copilot/README.md` — index + at-a-glance
+      - `../docs/copilot/05-approach-and-examples.md` — CURRENT-STATE AUTHORITY (as-built)
+      - `../docs/copilot/01-plan-and-milestones.md` — milestones + honest status markers
+      - `../docs/copilot/02-architecture-and-design.md` — design rationale
+      and the package source itself (`schema.py`, `provider.py`, `providers.py`,
+      `generate.py`, `validate.py`, `serialize.py`, `dryrun.py`, `_prompting.py`).
+
+      ## Intent Gathering
+
+      Working from the user's plain-text description (or a Jira/GitHub reference if one
+      is given), extract: the problem, any acceptance criteria, and how it maps onto an
+      existing milestone (e.g. M2.1 prompt tuning, M2.2 baseline harness, M2.3
+      slot-filling / conversation loop).
+
+      ## Sections
+
+      - **Why**: 1-2 sentences on the problem. Why now?
+      - **Intent Source**: the originating request (note "plain-text input" if none).
+      - **Milestone**: which doc-01 milestone this advances (M2.1 / M2.2 / M2.3 / M3.x).
+      - **What Changes**: specific new capabilities / modifications / removals. Mark
+        breaking changes **BREAKING** (e.g. a change to the `Provider` protocol or the
+        `{param:value}` contract).
+      - **Capabilities**:
+        - **New**: each becomes `specs/<kebab-name>/spec.md`.
+        - **Modified**: check `openspec/specs/` for existing names first.
+      - **Scope & Impact**: which modules under `fleetpy_copilot/` are touched. State
+        explicitly whether FleetPy `src/` stays untouched (it MUST — read-only import)
+        and whether the change stays env-agnostic (stdlib + pytest; a new dep must be
+        declared in all three manifests: root `requirements.txt`, `environment.yml`
+        pip: block, and `fleetpy_copilot/requirements-test.txt`).
+
+      Keep it concise (1-2 pages), focused on "why" not "how". Present to the user for
+      approval before proceeding to specs.
+  - id: specs
+    generates: specs/**/*.md
+    description: Detailed specifications with requirements and scenarios
+    template: specs/spec.md
+    requires:
+      - proposal
+    instruction: |
+      Create specification files that define WHAT the system should do.
+
+      One spec file per capability from the proposal. New capability → exact kebab-case
+      name (`specs/<capability>/spec.md`); modified → the existing folder name under
+      `openspec/specs/<capability>/`.
+
+      ## Single-package awareness (no multi-repo)
+
+      This is ONE in-tree package. Instead of cross-repo contracts, anchor each spec to:
+      - the **closed-vocabulary / deterministic-validator** invariant — a generated
+        config can only use FleetPy's real param names + module enums (hallucination-proof
+        by construction); specs must not weaken this.
+      - the **stateless provider** invariant — the `Provider` protocol returns a plain
+        `{param:value}` dict; validation is always the caller's job, never the provider's.
+      - the **dry-run gold gate** — functional correctness means the config actually
+        loads in FleetPy (`load_simulation_environment`, never `.run()`).
+      Scan the relevant module(s) under `fleetpy_copilot/` to capture current behavior
+      before specifying a delta.
+
+      ## Delta Operations (use ## headers)
+
+      - **ADDED Requirements** / **MODIFIED Requirements** (include full updated content)
+        / **REMOVED Requirements** (include **Reason** + **Migration**) /
+        **RENAMED Requirements** (FROM:/TO:).
+
+      ## Format
+
+      - `### Requirement: <name>` + description, using SHALL/MUST for normative rules.
+      - `#### Scenario: <name>` in WHEN/THEN form. Every requirement MUST have ≥1 scenario.
+      - Prefer scenarios that are checkable by the existing test tiers (validator checks,
+        dry-run gate, repair-loop outcomes `GeneratedConfig`/`NeedsInput`/`GenerationFailed`/
+        `DryRunFailed`).
+  - id: design
+    generates: design.md
+    description: Technical design decisions and implementation approach
+    template: design.md
+    requires:
+      - specs
+    instruction: |
+      Create the design document that explains HOW to implement the change.
+
+      Read `../docs/copilot/02-architecture-and-design.md` and `05-approach-and-examples.md`
+      for existing design decisions and the as-built pipeline. There are no cross-repo
+      contracts here; "architecture" means the module boundaries WITHIN `fleetpy_copilot/`
+      and the read-only seam to FleetPy `src/`.
+
+      ## Sections
+
+      - **Context**: current state + constraints (env-agnostic; `src/` untouched;
+        local-only per `fleetpy_copilot/WORKFLOW.md`).
+      - **Module impact**: which files under `fleetpy_copilot/` change and how they fit
+        the existing pipeline (provider → validate → serialize → dry-run; inner repair
+        loop inside the outer conversation loop).
+      - **Goals / Non-Goals**.
+      - **Decisions**: key choices with rationale (why X over Y). If this touches the
+        conversation layer, align with the decided design: Option A follow-ups, three-tier
+        state (current dict + turn/phase context + per-param history), stateless provider,
+        change-awareness; inner repair capped at 2 LLM calls/turn.
+      - **Risks / Trade-offs**: [Risk] → Mitigation.
+      - **Test & verification plan**: which tiers prove it (unit, hypothesis property,
+        dry-run, provider contract); must collect under BOTH conda and pip.
+      - **Open Questions**.
+
+      Focus on architecture and approach, not line-by-line code.
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist with trackable tasks
+    template: tasks.md
+    requires:
+      - design
+    instruction: |
+      Create the task list that breaks the implementation down.
+
+      ## Grouping (single repo — group by area, NOT by component repo)
+
+      There are no component repos. Group tasks by area within the package, e.g.
+      `prompting`, `providers`, `generate/orchestration`, `validate`, `serialize`,
+      `dryrun`, `tests`, `docs`. Use:
+
+      ```markdown
+      ## 1. <area> — <brief description>
+
+      - [ ] 1.1 Task description
+      - [ ] 1.2 Task description
+      ```
+
+      ## Local-only workflow (NO PRs, NO push, NO manifest)
+
+      Per `fleetpy_copilot/WORKFLOW.md` this project is **local-only**: never push, and
+      commit only tested checkpoints on the `copilot` branch (branched from `main`).
+      Therefore:
+      - Do **NOT** create a `manifest.yaml`, per-component branches, or draft PRs.
+      - A "done" group means: code + tests written AND the suite passes
+        (`.venv/bin/python -m pytest fleetpy_copilot/tests -q`) — that is the commit gate.
+      - If a task adds a dependency, include a subtask to declare it in all three manifests
+        (`requirements.txt`, `environment.yml` pip:, `fleetpy_copilot/requirements-test.txt`).
+
+      ## Guidelines
+
+      - Each task is a checkbox `- [ ] X.Y ...`, small enough for one session.
+      - Order tasks and groups by dependency.
+      - Reference the spec requirement each task satisfies.
+      - Include explicit verification steps (which tests; dry-run where relevant).
+      - Note intra-package dependencies inline, e.g.
+        `- [ ] 2.1 Wire follow-up re-parse (depends on 1.3 — prompt builder change)`.
+apply:
+  requires:
+    - tasks
+  tracks: tasks.md
