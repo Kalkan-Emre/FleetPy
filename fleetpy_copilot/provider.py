@@ -12,7 +12,26 @@ be exercised in tests.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Dict, List, Mapping, Optional, Protocol, runtime_checkable
+
+
+@dataclass
+class GenerationCall:
+    """Richer return of one provider call, so the loop can surface the full rendered
+    prompt and the raw model reply into the observability trace WITHOUT the provider
+    importing ``trace.py``.
+
+    Only ``config`` (the ``{param: value}`` dict) is load-bearing for the pipeline —
+    it is exactly what ``generate()`` returns. The prompt/reply fields are optional
+    observability extras; a provider that does not implement ``generate_verbose``
+    leaves them empty and the loop still works.
+    """
+
+    config: Dict[str, object] = field(default_factory=dict)
+    system_prompt: str = ""
+    user_prompt: str = ""
+    raw_reply: Optional[str] = None
 
 
 @runtime_checkable
