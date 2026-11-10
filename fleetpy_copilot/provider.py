@@ -12,6 +12,7 @@ be exercised in tests.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Dict, List, Mapping, Optional, Protocol, runtime_checkable
 
@@ -54,6 +55,13 @@ class Provider(Protocol):
         """
         ...
 
+    # OPTIONAL. A provider MAY also implement ``generate_verbose`` to surface the
+    # rendered prompts + raw reply into the observability trace. ``generate_config``
+    # calls it when present and otherwise falls back to ``generate``. This is purely
+    # for observability — the ``config`` it returns is exactly what ``generate`` would.
+    # (Declared as an optional method: not all Providers implement it, so it is not
+    # part of the runtime-checkable isinstance contract.)
+
 
 class MockProvider:
     """Deterministic ``Provider`` for tests and offline wiring.
@@ -79,3 +87,21 @@ class MockProvider:
         self.calls.append({"prompt": prompt, "correction": correction})
         idx = min(len(self.calls) - 1, len(self._responses) - 1)
         return dict(self._responses[idx])
+
+    def generate_verbose(
+        self,
+        prompt: str,
+        *,
+        correction: Optional[str] = None,
+        schema_hint: Optional[Mapping[str, object]] = None,
+    ) -> GenerationCall:
+        """Same result as ``generate``, plus observability extras. The mock has no
+        real rendered prompt, so it echoes the request/correction and dumps its
+        chosen response as the ``raw_reply`` (JSON) so the trace shows something
+        concrete offline."""
+        config = self.generate(prompt, correction=correction, schema_hint=schema_hint)
+        return GenerationCall(
+            config=config,
+            user_prompt=prompt if not correction else f"{prompt}\n[correction] {correction}",
+            raw_reply=json.dumps(config),
+        )

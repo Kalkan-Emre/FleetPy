@@ -211,3 +211,46 @@ def test_no_print_in_generate_source():
     import fleetpy_copilot.generate as gen
     src = open(gen.__file__).read()
     assert "print(" not in src
+
+
+# --- full prompt + raw reply into the trace (step 3) ---------------------------
+
+def test_llm_call_carries_full_prompt_and_reply_with_verbose_mock(good_config):
+    # MockProvider.generate_verbose fills user_prompt + raw_reply
+    t = CollectingTracer()
+    generate_config("ir-only here", MockProvider([good_config]), do_dry_run=False, tracer=t)
+    llm = _first(t, "llm_call")
+    assert "ir-only here" in llm.payload["user_prompt"]
+    assert llm.payload["raw_reply"]  # json dump of the chosen response
+    assert "sim_env" in llm.payload["raw_reply"]
+
+
+class _PlainProvider:
+    """A Provider with only generate() — no generate_verbose. The loop must fall
+    back gracefully (empty prompt fields, no crash)."""
+
+    def __init__(self, response):
+        self._r = dict(response)
+
+    def generate(self, prompt, *, correction=None, schema_hint=None):
+        return dict(self._r)
+
+
+def test_llm_call_graceful_fallback_without_verbose(good_config):
+    t = CollectingTracer()
+    out = generate_config("x", _PlainProvider(good_config), do_dry_run=False, tracer=t)
+    llm = _first(t, "llm_call")
+    # no verbose method -> empty prompt fields, raw_reply None, but candidate_keys present
+    assert llm.payload["system_prompt"] == ""
+    assert llm.payload["user_prompt"] == ""
+    assert llm.payload["raw_reply"] is None
+    assert llm.payload["candidate_keys"]  # the loop still saw the config
+    # and the outcome is unaffected
+    assert _first(t, "outcome").payload["type"] == "GeneratedConfig"
+
+
+def test_verbose_and_plain_produce_same_outcome(good_config):
+    o_plain = generate_config("x", _PlainProvider(good_config), do_dry_run=False)
+    o_verbose = generate_config("x", MockProvider([good_config]), do_dry_run=False)
+    assert type(o_plain) is type(o_verbose)
+    assert o_plain.config == o_verbose.config

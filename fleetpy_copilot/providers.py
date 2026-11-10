@@ -24,7 +24,7 @@ import os
 from typing import Dict, Mapping, Optional
 
 from . import _http, _prompting
-from .provider import MockProvider, Provider
+from .provider import GenerationCall, MockProvider, Provider
 
 
 class OpenAICompatProvider:
@@ -61,6 +61,19 @@ class OpenAICompatProvider:
         correction: Optional[str] = None,
         schema_hint: Optional[Mapping[str, object]] = None,
     ) -> Dict[str, object]:
+        return self.generate_verbose(
+            prompt, correction=correction, schema_hint=schema_hint
+        ).config
+
+    def generate_verbose(
+        self,
+        prompt: str,
+        *,
+        correction: Optional[str] = None,
+        schema_hint: Optional[Mapping[str, object]] = None,
+    ) -> GenerationCall:
+        system_prompt = _prompting.build_system_prompt(schema_hint)
+        user_prompt = _prompting.build_user_prompt(prompt, correction)
         body = {
             "model": self.model,
             "max_tokens": self.max_tokens,
@@ -70,14 +83,19 @@ class OpenAICompatProvider:
             # rejects temperature with a 400 on current Claude models.
             "temperature": self.temperature,
             "messages": [
-                {"role": "system", "content": _prompting.build_system_prompt(schema_hint)},
-                {"role": "user", "content": _prompting.build_user_prompt(prompt, correction)},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
         }
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         data = _http.post_json(f"{self.base_url}{self.chat_path}", body, headers=headers)
         text = data["choices"][0]["message"]["content"]
-        return _prompting.parse_reply(text)
+        return GenerationCall(
+            config=_prompting.parse_reply(text),
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            raw_reply=text,
+        )
 
 
 class AnthropicProvider:
@@ -114,12 +132,25 @@ class AnthropicProvider:
         correction: Optional[str] = None,
         schema_hint: Optional[Mapping[str, object]] = None,
     ) -> Dict[str, object]:
+        return self.generate_verbose(
+            prompt, correction=correction, schema_hint=schema_hint
+        ).config
+
+    def generate_verbose(
+        self,
+        prompt: str,
+        *,
+        correction: Optional[str] = None,
+        schema_hint: Optional[Mapping[str, object]] = None,
+    ) -> GenerationCall:
+        system_prompt = _prompting.build_system_prompt(schema_hint)
+        user_prompt = _prompting.build_user_prompt(prompt, correction)
         body = {
             "model": self.model,
             "max_tokens": self.max_tokens,
-            "system": _prompting.build_system_prompt(schema_hint),
+            "system": system_prompt,
             "messages": [
-                {"role": "user", "content": _prompting.build_user_prompt(prompt, correction)},
+                {"role": "user", "content": user_prompt},
             ],
         }
         headers = {
@@ -130,7 +161,12 @@ class AnthropicProvider:
         # content is a list of blocks; concatenate the text blocks.
         blocks = data.get("content") or []
         text = "".join(b.get("text", "") for b in blocks if isinstance(b, dict))
-        return _prompting.parse_reply(text)
+        return GenerationCall(
+            config=_prompting.parse_reply(text),
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            raw_reply=text,
+        )
 
 
 # --- the one-switch factory ----------------------------------------------------
