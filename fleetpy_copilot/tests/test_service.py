@@ -127,6 +127,25 @@ def test_core_modules_do_not_import_service():
         assert "from .service" not in src
 
 
+def test_importing_core_does_not_load_fastapi():
+    # stronger than source grep: importing the core in a fresh subprocess must not
+    # pull fastapi/uvicorn into sys.modules (the env-agnostic-core invariant).
+    import subprocess
+    import sys
+
+    code = (
+        "import sys;"
+        "import fleetpy_copilot.generate, fleetpy_copilot.trace,"
+        " fleetpy_copilot.provider, fleetpy_copilot.providers;"
+        "assert 'fastapi' not in sys.modules;"
+        "assert 'uvicorn' not in sys.modules;"
+        "print('ok')"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "ok" in r.stdout
+
+
 # --- FastAPI route layer (skip if fastapi/httpx unavailable) -------------------
 
 fastapi_client = pytest.importorskip  # alias for readability
