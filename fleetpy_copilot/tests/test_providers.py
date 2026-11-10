@@ -161,16 +161,38 @@ def test_all_providers_satisfy_protocol():
 # --- live contract tests (skip unless reachable) -------------------------------
 
 def _hai_reachable() -> bool:
+    """True only if a real roundtrip through the provider would actually succeed.
+
+    Probes the **chat endpoint the provider uses, with the same auth** — NOT the bare
+    root. The bare root returns 200 with no auth, so probing it gave a false "reachable"
+    when the token was missing/expired, turning a should-skip into a hard FAILURE on any
+    machine without the token. Here a 401/403 (missing or bad token) or an unreachable
+    proxy -> skip; a 200 or a 400 (reached + authorized, just a trivial body) -> run.
+    """
+    import json
     import urllib.error
     import urllib.request
+
     base = os.environ.get("HAI_BASE_URL", "http://localhost:6655")
+    token = os.environ.get("HAI_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+    if not token:
+        return False  # no credential -> a live call can't authorize -> skip, don't fail
+    url = f"{base}/litellm/v1/chat/completions"
+    body = json.dumps({
+        "model": os.environ.get("HAI_MODEL", "claude-haiku-4-5"),
+        "max_tokens": 1,
+        "messages": [{"role": "user", "content": "ping"}],
+    }).encode("utf-8")
+    req = urllib.request.Request(url, data=body, method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Authorization", f"Bearer {token}")
     try:
-        urllib.request.urlopen(base, timeout=2)
-        return True
-    except urllib.error.HTTPError:
-        return True  # reachable, just not a 200 on /
+        urllib.request.urlopen(req, timeout=3)
+        return True                       # authorized + answered
+    except urllib.error.HTTPError as exc:
+        return exc.code not in (401, 403)  # auth failure -> skip; other HTTP -> reached
     except Exception:
-        return False
+        return False                       # proxy down/unreachable -> skip
 
 
 @pytest.mark.skipif(not _hai_reachable(), reason="hai proxy not reachable")
