@@ -9,11 +9,15 @@ provider is just "build body, read reply".
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 from typing import Dict, Mapping, Optional
 
-DEFAULT_TIMEOUT_S = 60
+# Default HTTP timeout for live provider calls. Kept short so a stuck call fails fast
+# with a clear ProviderHTTPError instead of a long silent wait; override per
+# environment with COPILOT_HTTP_TIMEOUT (seconds).
+DEFAULT_TIMEOUT_S = int(os.environ.get("COPILOT_HTTP_TIMEOUT", "20"))
 
 
 class ProviderHTTPError(RuntimeError):

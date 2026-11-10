@@ -77,6 +77,10 @@ class MockProvider:
         self._responses: List[Mapping[str, object]] = list(responses or [{}])
         self.calls: List[Dict[str, object]] = []  # recorded (prompt, correction) per call
 
+    def describe(self) -> Dict[str, object]:
+        """Small descriptor for the observability trace."""
+        return {"provider": "mock", "model": "mock", "endpoint": "(offline)"}
+
     def generate(
         self,
         prompt: str,

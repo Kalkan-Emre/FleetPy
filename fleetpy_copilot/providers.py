@@ -54,6 +54,11 @@ class OpenAICompatProvider:
         self.max_tokens = max_tokens
         self.temperature = temperature
 
+    def describe(self) -> Dict[str, object]:
+        """Small, non-secret descriptor for the observability trace (never the token)."""
+        return {"provider": "openai-compatible", "model": self.model,
+                "endpoint": f"{self.base_url}{self.chat_path}"}
+
     def generate(
         self,
         prompt: str,
@@ -124,6 +129,11 @@ class AnthropicProvider:
         self.base_url = base_url.rstrip("/")
         self.version = version
         self.max_tokens = max_tokens
+
+    def describe(self) -> Dict[str, object]:
+        """Small, non-secret descriptor for the observability trace (never the key)."""
+        return {"provider": "anthropic", "model": self.model,
+                "endpoint": f"{self.base_url}/v1/messages"}
 
     def generate(
         self,

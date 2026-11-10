@@ -16,6 +16,7 @@ values are a model mistake and are sent back as a correction instead.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Mapping, Optional
 
@@ -47,6 +48,7 @@ class NeedsInput:
     candidate: Dict[str, object]
     validation: ValidationResult
     other_errors: Dict[str, str] = field(default_factory=dict)
+    attempts: int = 1
 
 
 @dataclass
@@ -111,6 +113,21 @@ def _provider_call(provider: Provider, prompt: str, correction: Optional[str]):
     return GenerationCall(config=raw)
 
 
+def _describe(provider: Provider) -> Dict[str, str]:
+    """A small, non-secret descriptor of the provider for the ``provider_request``
+    event (provider name, model, endpoint). Falls back to the class name for a
+    provider that does not implement ``describe``. Never includes credentials."""
+    describe = getattr(provider, "describe", None)
+    if callable(describe):
+        d = describe()
+        return {
+            "provider": str(d.get("provider", type(provider).__name__)),
+            "model": str(d.get("model", "?")),
+            "endpoint": str(d.get("endpoint", "?")),
+        }
+    return {"provider": type(provider).__name__, "model": "?", "endpoint": "?"}
+
+
 def generate_config(
     prompt: str,
     provider: Provider,
@@ -137,6 +154,7 @@ def generate_config(
     last_candidate: Dict[str, object] = {}
 
     attempts = 0
+    descriptor = _describe(provider)
     with tracer.span("generate"):
         # one initial attempt + up to max_repairs re-asks
         for _ in range(max_repairs + 1):
@@ -144,10 +162,36 @@ def generate_config(
             tracer.emit(
                 "attempt",
                 attempt=attempts,
-                message=f"{attempts}/{max_repairs + 1}",
+                message=f"attempt {attempts} of {max_repairs + 1}"
+                + (" (repair)" if correction else ""),
                 correction=correction,
             )
-            call = _provider_call(provider, prompt, correction)
+            # pre-call: make the wait visible (esp. for a live provider over HTTP)
+            tracer.emit(
+                "provider_request",
+                attempt=attempts,
+                message="calling {provider} · model={model}".format(**descriptor),
+                **descriptor,
+            )
+            call_started = time.monotonic()
+            try:
+                call = _provider_call(provider, prompt, correction)
+            except Exception as exc:  # transport/provider failure — surface, don't swallow
+                elapsed_ms = int((time.monotonic() - call_started) * 1000)
+                tracer.emit(
+                    "provider_error",
+                    attempt=attempts,
+                    message=f"{type(exc).__name__}: {exc} (after {elapsed_ms}ms)",
+                    error=f"{type(exc).__name__}: {exc}",
+                    elapsed_ms=elapsed_ms,
+                )
+                tracer.emit(
+                    "outcome", attempt=attempts,
+                    type="ProviderError", attempts=attempts,
+                    message=f"provider call failed: {type(exc).__name__}",
+                )
+                raise
+            elapsed_ms = int((time.monotonic() - call_started) * 1000)
             raw = call.config
             if not isinstance(raw, Mapping):
                 raise TypeError(
@@ -156,7 +200,8 @@ def generate_config(
             tracer.emit(
                 "llm_call",
                 attempt=attempts,
-                message=f"{len(raw)} param(s)",
+                message=f"{len(raw)} param(s) in {elapsed_ms}ms",
+                elapsed_ms=elapsed_ms,
                 candidate_keys=sorted(raw.keys()),
                 system_prompt=call.system_prompt,
                 user_prompt=call.user_prompt,
@@ -167,6 +212,8 @@ def generate_config(
             tracer.emit(
                 "merge",
                 attempt=attempts,
+                message=f"{len(candidate)} param(s) after merge "
+                f"({len(base)} constant + {len(raw)} from model)",
                 constant_keys=sorted(base.keys()),
                 candidate_keys=sorted(candidate.keys()),
             )
@@ -175,7 +222,7 @@ def generate_config(
             tracer.emit(
                 "validate",
                 attempt=attempts,
-                message=result.summary(),
+                message="OK — valid" if result.ok else f"FAIL — {result.summary()}",
                 ok=result.ok,
                 unknown_params=list(result.unknown_params),
                 invalid_module_values=dict(result.invalid_module_values),
@@ -189,13 +236,16 @@ def generate_config(
                 if dr is not None:
                     tracer.emit(
                         "dry_run", attempt=attempts, ok=dr.ok, error=dr.error,
-                        message="ok" if dr.ok else "failed",
+                        message="OK — FleetPy loaded the config"
+                        if dr.ok else f"FAIL — {dr.error}",
                     )
                 if dr is not None and not dr.ok:
                     # validated clean but FleetPy could not initialize it -> gate fails.
                     tracer.emit(
                         "outcome", attempt=attempts,
                         type="DryRunFailed", attempts=attempts,
+                        message=f"DryRunFailed after {attempts} attempt(s) — "
+                        "valid but FleetPy would not load it",
                     )
                     return DryRunFailed(
                         config=candidate, validation=result, dry_run=dr, attempts=attempts
@@ -203,6 +253,9 @@ def generate_config(
                 tracer.emit(
                     "outcome", attempt=attempts,
                     type="GeneratedConfig", attempts=attempts,
+                    message=f"GeneratedConfig after {attempts} attempt(s) — "
+                    f"{len(candidate)} param(s)"
+                    + ("" if dr is None else ", dry-run OK"),
                 )
                 return GeneratedConfig(
                     config=candidate, validation=result, dry_run=dr, attempts=attempts
@@ -217,26 +270,39 @@ def generate_config(
                     **result.type_errors,
                 }
                 slots = _slots_for(result.missing_mandatory)
+                slot_names = [s.name for s in slots]
                 tracer.emit(
                     "needs_input", attempt=attempts,
-                    message=f"{len(slots)} slot(s)",
-                    slots=[s.name for s in slots],
+                    message=f"{len(slots)} slot(s) to ask for: "
+                    + ", ".join(slot_names[:6])
+                    + ("…" if len(slot_names) > 6 else ""),
+                    slots=slot_names,
                     other_errors=other,
                 )
                 tracer.emit(
                     "outcome", attempt=attempts,
                     type="NeedsInput", attempts=attempts,
+                    message=f"NeedsInput after {attempts} attempt(s) — "
+                    f"{len(slots)} slot(s) needed (ask, don't infer)",
                 )
                 return NeedsInput(
                     slots=slots,
                     candidate=candidate,
                     validation=result,
                     other_errors=other,
+                    attempts=attempts,
                 )
 
             # a model mistake (bad name/enum/value/type) -> send back for repair.
             correction = _correction_message(result)
-            tracer.emit("repair", attempt=attempts, correction=correction)
+            tracer.emit(
+                "repair", attempt=attempts,
+                message="sending correction back to the model: " + result.summary(),
+                correction=correction,
+            )
 
-        tracer.emit("outcome", type="GenerationFailed", attempts=attempts)
+        tracer.emit(
+            "outcome", type="GenerationFailed", attempts=attempts,
+            message=f"GenerationFailed — repair budget exhausted after {attempts} attempt(s)",
+        )
         return GenerationFailed(candidate=last_candidate, validation=last, attempts=attempts)

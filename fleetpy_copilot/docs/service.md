@@ -83,24 +83,43 @@ The `outcome.type` discriminator tells the client which branch it got:
 ## Watching the trace
 
 Every request streams an indented step trace to the service console (stderr), nested
-`request > generate`:
+`request > generate`, followed by a one-line summary footer:
 
 ```
-[req 3324fc86] generate  prompt='ride-pooling on example_network for 2 hours'
-    attempt [attempt 1]  1/2
-    llm_call [attempt 1]  0 param(s)  candidate_keys=[]
+[req e72a9274] generate  prompt='I want to run a simulation'
+    attempt [attempt 1]  attempt 1 of 2
+    provider_request [attempt 1]  calling mock · model=mock  provider=mock endpoint=(offline)
+    llm_call [attempt 1]  0 param(s) in 0ms  candidate_keys=[]
       user_prompt:
-        ride-pooling on example_network for 2 hours
+        I want to run a simulation
       raw_reply:
         {}
-    merge [attempt 1]  constant_keys=[] candidate_keys=[]
-    validate [attempt 1]  missing mandatory: ['demand_name', 'end_time', ...]  ok=False
-    needs_input [attempt 1]  13 slot(s)  slots=["demand_name", "end_time", ...]
-    outcome [attempt 1]  type=NeedsInput attempts=1
+    merge [attempt 1]  0 param(s) after merge (0 constant + 0 from model)
+    validate [attempt 1]  FAIL — missing mandatory: ['demand_name', 'end_time', ...]
+    needs_input [attempt 1]  13 slot(s) to ask for: demand_name, end_time, network_name…
+    outcome [attempt 1]  NeedsInput after 1 attempt(s) — 13 slot(s) needed (ask, don't infer)
+[req e72a9274] done  outcome=NeedsInput  attempts=1  1ms  provider=mock/mock
+[req e72a9274]   need: demand_name, end_time, network_name, ...
 ```
 
-The full rendered system/user prompt and the raw model reply are shown under `llm_call` on every
-attempt. A repair shows as `validate` (fail) → `repair` → a second `attempt`.
+Step vocabulary (one indent level under `generate`):
+
+| step | when | shows |
+|------|------|-------|
+| `attempt` | start of each attempt | attempt N of max, whether it's a repair |
+| `provider_request` | **before** the LLM/HTTP call | provider, model, endpoint — makes the wait visible |
+| `llm_call` | after the call returns | round-trip `elapsed_ms`, full system/user prompt, raw reply |
+| `merge` | after merging constant + model output | param counts |
+| `validate` | after the 5-check validator | `OK` or `FAIL — <summary>` |
+| `repair` | present-but-invalid output | the correction sent back (then a new `attempt`) |
+| `needs_input` | missing mandatory | the slots to ask the user for |
+| `dry_run` | clean config, gate run | `OK` (FleetPy loaded it) or `FAIL — <error>` |
+| `provider_error` | the call raised (timeout/401/unreachable) | the error + `elapsed_ms`; then re-raised |
+| `outcome` | every return path | the terminal type + attempts |
+
+The full rendered system/user prompt and the raw model reply are shown under `llm_call` on
+every attempt. A repair shows as `validate` (FAIL) → `repair` → a second `attempt`. For a live
+provider, `provider_request` prints *before* the HTTP wait so you are never staring at silence.
 
 ## Per-request JSON trace file
 
@@ -122,6 +141,9 @@ trace** — distinct from the planned day-one data-collection JSONL, which logs 
 | `COPILOT_HOST`     | `127.0.0.1`        | bind host                                          |
 | `COPILOT_PORT`     | `8750`             | bind port                                          |
 | `COPILOT_TRACE_DIR`| `./logs`           | directory for per-request JSON trace files         |
+| `COPILOT_HTTP_TIMEOUT` | `20`           | seconds before a live provider call fails with a `provider_error` |
 
 Provider-specific vars (`HAI_*`, `OPENAI_*`, `ANTHROPIC_*`) are read by `make_provider()` exactly
-as for the CLI entry points.
+as for the CLI entry points. `openai` and `anthropic` require their API key
+(`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) in the environment of the terminal running the service,
+or startup fails fast with a clear error; `hai` (the local proxy) usually needs no key.

@@ -84,7 +84,7 @@ def test_good_path_emits_expected_steps(good_config):
     t = CollectingTracer()
     out = generate_config("ir-only", MockProvider([good_config]), do_dry_run=False, tracer=t)
     steps = _steps(t)
-    assert steps == ["attempt", "llm_call", "merge", "validate", "outcome"]
+    assert steps == ["attempt", "provider_request", "llm_call", "merge", "validate", "outcome"]
     assert _first(t, "validate").payload["ok"] is True
     oc = _first(t, "outcome")
     assert oc.payload["type"] == "GeneratedConfig"
@@ -254,3 +254,45 @@ def test_verbose_and_plain_produce_same_outcome(good_config):
     o_verbose = generate_config("x", MockProvider([good_config]), do_dry_run=False)
     assert type(o_plain) is type(o_verbose)
     assert o_plain.config == o_verbose.config
+
+
+# --- richer live-call visibility (provider_request / timing / error) -----------
+
+def test_provider_request_emitted_before_llm_call(good_config):
+    t = CollectingTracer()
+    generate_config("x", MockProvider([good_config]), do_dry_run=False, tracer=t)
+    steps = _steps(t)
+    assert steps.index("provider_request") < steps.index("llm_call")
+    pr = _first(t, "provider_request")
+    assert pr.payload["provider"] == "mock"
+    assert "model" in pr.payload and "endpoint" in pr.payload
+
+
+def test_llm_call_carries_latency(good_config):
+    t = CollectingTracer()
+    generate_config("x", MockProvider([good_config]), do_dry_run=False, tracer=t)
+    assert "elapsed_ms" in _first(t, "llm_call").payload
+
+
+class _RaisingProvider:
+    def generate(self, prompt, *, correction=None, schema_hint=None):
+        raise RuntimeError("upstream API down")
+
+
+def test_provider_error_event_then_reraise():
+    t = CollectingTracer()
+    with pytest.raises(RuntimeError, match="upstream API down"):
+        generate_config("x", _RaisingProvider(), do_dry_run=False, tracer=t)
+    steps = _steps(t)
+    assert "provider_error" in steps
+    assert "upstream API down" in _first(t, "provider_error").payload["error"]
+    # a terminal outcome event is still emitted on the error path
+    assert _first(t, "outcome").payload["type"] == "ProviderError"
+
+
+def test_provider_descriptor_has_no_secret():
+    # describe() must never leak the token/key
+    from fleetpy_copilot.providers import OpenAICompatProvider
+    p = OpenAICompatProvider(base_url="http://x", model="m", token="SECRET")
+    d = p.describe()
+    assert "SECRET" not in str(d)

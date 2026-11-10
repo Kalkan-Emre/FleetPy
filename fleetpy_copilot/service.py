@@ -19,6 +19,7 @@ import dataclasses
 import json
 import os
 import sys
+import time
 import uuid
 from typing import Dict, Mapping, Optional
 
@@ -107,6 +108,7 @@ def handle_generate(
     tracer = CompositeTracer(tracers)
 
     print(f"[req {request_id}] generate  prompt={prompt!r}", file=sys.stderr)
+    started = time.monotonic()
     with tracer.span("request"):
         outcome = generate_config(
             prompt,
@@ -116,6 +118,8 @@ def handle_generate(
             do_dry_run=do_dry_run,
             tracer=tracer,
         )
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    _print_summary(request_id, outcome, provider, elapsed_ms)
 
     return {
         "request_id": request_id,
@@ -123,6 +127,29 @@ def handle_generate(
         "trace": _trace_to_json(collector),
         "prompt_version": _prompting.PROMPT_VERSION,
     }
+
+
+def _print_summary(request_id: str, outcome, provider, elapsed_ms: int) -> None:
+    """One compact per-request footer to the console: outcome, attempts, latency,
+    provider/model, and (for NeedsInput) the slots still needed."""
+    kind = type(outcome).__name__
+    attempts = getattr(outcome, "attempts", "?")
+    desc = getattr(provider, "describe", lambda: {})()
+    prov = f"{desc.get('provider', type(provider).__name__)}/{desc.get('model', '?')}"
+    print(f"[req {request_id}] done  outcome={kind}  attempts={attempts}  "
+          f"{elapsed_ms}ms  provider={prov}", file=sys.stderr)
+    if kind == "NeedsInput":
+        names = [s.name for s in getattr(outcome, "slots", [])]
+        print(f"[req {request_id}]   need: {', '.join(names)}", file=sys.stderr)
+    elif kind == "GenerationFailed":
+        val = getattr(outcome, "validation", None)
+        if val is not None:
+            print(f"[req {request_id}]   last error: {val.summary()}", file=sys.stderr)
+    elif kind == "DryRunFailed":
+        dr = getattr(outcome, "dry_run", None)
+        if dr is not None:
+            print(f"[req {request_id}]   dry-run error: {dr.error}", file=sys.stderr)
+    sys.stderr.flush()
 
 
 # --- the FastAPI shell (dependency confined here) -----------------------------
