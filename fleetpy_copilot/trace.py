@@ -19,6 +19,7 @@ module (full prompt/reply reach the trace via data the loop already holds — se
 from __future__ import annotations
 
 import json
+import os
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -179,14 +180,60 @@ class ConsoleTracer(_BaseTracer):
         self._stream.flush()
 
 
+class JsonFileTracer(CollectingTracer):
+    """Collects events and writes the request's full event array to one self-contained
+    JSON file, ``<dir>/req-<request_id>.json``, when the request's outermost span exits.
+
+    One file per request keeps each trace isolated and easy to inspect. This is a
+    DIFFERENT artifact from the planned day-one data-collection JSONL (which logs
+    NL→config *pairs*, not step traces)."""
+
+    def __init__(self, directory: str, *, request_id: Optional[str] = None) -> None:
+        super().__init__()
+        self._dir = directory
+        self._request_id = request_id or "trace"
+        self._written = False
+
+    @contextmanager
+    def span(self, name: str) -> Iterator[None]:
+        with super().span(name):
+            yield
+        # when the outermost span unwinds, the stack is empty -> flush the file once
+        if not self._span and not self._written:
+            self._flush()
+
+    def _flush(self) -> None:
+        self._written = True
+        os.makedirs(self._dir, exist_ok=True)
+        path = os.path.join(self._dir, f"req-{self._request_id}.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump([e.to_json() for e in self.events], fh, default=str, indent=2)
+        self.path = path
+
+
 class CompositeTracer(_BaseTracer):
     """Fans one emit out to several tracers in a single pass. Owns the authoritative
     span stack + seq; children receive fully-formed events via ``_emit_event`` so every
-    renderer sees the same span path and ordering."""
+    renderer sees the same span path and ordering. Span enter/exit is ALSO propagated to
+    children so span-driven children (e.g. ``JsonFileTracer`` flushing on outermost exit)
+    behave as if they tracked the stack themselves."""
 
     def __init__(self, tracers: List[Tracer]) -> None:
         super().__init__()
         self._tracers = list(tracers)
+
+    @contextmanager
+    def span(self, name: str) -> Iterator[None]:
+        self._span.append(name)
+        ctxs = [t.span(name) for t in self._tracers]
+        for c in ctxs:
+            c.__enter__()
+        try:
+            yield
+        finally:
+            self._span.pop()
+            for c in reversed(ctxs):
+                c.__exit__(None, None, None)
 
     def _handle(self, event: Event) -> None:
         for t in self._tracers:

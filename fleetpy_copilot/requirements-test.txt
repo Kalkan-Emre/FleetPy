@@ -1,6 +1,0 @@
-# Test dependencies for fleetpy_copilot.
-#
-# The copilot's runtime surface is stdlib + FleetPy `src` only (see the
-# copilot-env-agnostic note). Running its test suite additionally needs:
-pytest
-hypothesis      # property-based tests in tests/test_value_properties.py
