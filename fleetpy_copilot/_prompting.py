@@ -17,12 +17,20 @@ from typing import Dict, Mapping, Optional
 
 from . import schema
 
+#: Version of the prompt surface (system + user builders below). Bump whenever the
+#: wording or grounding changes, and add a PROMPT_CHANGELOG.md entry, so a scoreboard
+#: can be attributed to the exact prompt that produced it (M2.5).
+PROMPT_VERSION = "v1"
+
 _SYSTEM = (
     "You translate a natural-language Mobility-on-Demand simulation request into a "
     "FleetPy scenario configuration. Return ONLY a single JSON object mapping "
-    "parameter names to values — no prose, no markdown fences. Use ONLY parameter "
-    "names and module values from the provided schema; never invent names. Omit "
-    "parameters you are unsure of rather than guessing."
+    "parameter names to values — no prose, no explanation, no markdown fences. "
+    "Use ONLY parameter names and module values from the provided schema; never "
+    "invent a name or a module value. For a module-selecting parameter you MUST "
+    "choose one of its listed valid values verbatim. If you are unsure of a "
+    "parameter, OMIT it rather than guessing — a missing value will be asked for, "
+    "but a wrong value is a mistake."
 )
 
 

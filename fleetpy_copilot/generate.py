@@ -102,7 +102,7 @@ def generate_config(
     provider: Provider,
     *,
     constant: Optional[Mapping[str, object]] = None,
-    max_repairs: int = 2,
+    max_repairs: int = 1,
     do_dry_run: bool = True,
 ):
     """Drive the provider to a validated config, or a typed non-success outcome.

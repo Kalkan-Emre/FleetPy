@@ -57,6 +57,57 @@ def test_user_prompt_includes_correction():
     assert "make an IR scenario" in up and "bad op_module" in up
 
 
+def test_prompt_version_exposed():
+    assert isinstance(_prompting.PROMPT_VERSION, str) and _prompting.PROMPT_VERSION
+
+
+# --- request body contract (temperature; no live call) -------------------------
+# M2.1: determinism via temperature=0 is OpenAI-compatible-only. The native
+# Anthropic Messages API 400s on temperature for current models, so its body must
+# NOT carry one. We capture the body by monkeypatching _http.post_json.
+
+def _capture_body(monkeypatch, module_attr):
+    """Patch providers.<module_attr>.post_json to record the body and return a
+    minimal valid reply for that provider's parser."""
+    captured = {}
+
+    def fake_post_json(url, body, *, headers=None, timeout=60):
+        captured["url"] = url
+        captured["body"] = body
+        captured["headers"] = headers
+        return module_attr
+    monkeypatch.setattr(providers._http, "post_json", fake_post_json)
+    return captured
+
+
+_OPENAI_REPLY = {"choices": [{"message": {"content": '{"sim_env": "X"}'}}]}
+_ANTHROPIC_REPLY = {"content": [{"type": "text", "text": '{"sim_env": "X"}'}]}
+
+
+def test_openai_compat_body_has_temperature_zero_by_default(monkeypatch):
+    captured = _capture_body(monkeypatch, _OPENAI_REPLY)
+    p = OpenAICompatProvider(base_url="http://x", model="m", token="t")
+    out = p.generate("make a scenario")
+    assert out == {"sim_env": "X"}                 # parser still returns a dict
+    assert captured["body"]["temperature"] == 0    # determinism on by default
+
+
+def test_openai_compat_temperature_overridable(monkeypatch):
+    captured = _capture_body(monkeypatch, _OPENAI_REPLY)
+    p = OpenAICompatProvider(base_url="http://x", model="m", temperature=0.7)
+    p.generate("make a scenario")
+    assert captured["body"]["temperature"] == 0.7
+
+
+def test_anthropic_body_has_no_temperature(monkeypatch):
+    # Current Claude models 400 on temperature; the Anthropic body must omit it.
+    captured = _capture_body(monkeypatch, _ANTHROPIC_REPLY)
+    p = AnthropicProvider(api_key="k", model="claude-haiku-4-5")
+    out = p.generate("make a scenario")
+    assert out == {"sim_env": "X"}
+    assert "temperature" not in captured["body"]
+
+
 # --- factory switch ------------------------------------------------------------
 
 def test_factory_defaults_to_mock(monkeypatch):

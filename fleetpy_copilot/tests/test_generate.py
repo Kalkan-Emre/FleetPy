@@ -92,6 +92,29 @@ def test_repair_budget_exhausted_returns_failure(good_config):
     assert "op_module" in out.validation.invalid_module_values
 
 
+def test_default_repair_cap_is_two_calls(good_config):
+    # M2.1: the DEFAULT max_repairs is 1, so a never-fixing provider must make
+    # exactly TWO provider calls (1 initial + 1 repair) before GenerationFailed.
+    # This pins the default (the test above passes max_repairs explicitly).
+    bad = dict(good_config)
+    bad["op_module"] = "StillWrong"
+    provider = MockProvider([bad])
+    out = generate_config("never fixed", provider, do_dry_run=False)  # no max_repairs
+    assert isinstance(out, GenerationFailed)
+    assert out.attempts == 2
+    assert len(provider.calls) == 2
+
+
+def test_missing_mandatory_makes_exactly_one_call(good_config):
+    # Under-specification must short-circuit with NO repair re-ask.
+    broken = dict(good_config)
+    broken.pop("sim_env")
+    provider = MockProvider([broken])
+    out = generate_config("under-specified", provider, do_dry_run=False)
+    assert isinstance(out, NeedsInput)
+    assert len(provider.calls) == 1
+
+
 # --- value-error (Part A) drives repair, not a crash ---------------------------
 
 def test_value_error_routes_to_repair(good_config):

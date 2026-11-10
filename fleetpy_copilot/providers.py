@@ -45,12 +45,14 @@ class OpenAICompatProvider:
         token: str = "",
         chat_path: str = "/v1/chat/completions",
         max_tokens: int = 1024,
+        temperature: float = 0.0,
     ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.token = token
         self.chat_path = chat_path
         self.max_tokens = max_tokens
+        self.temperature = temperature
 
     def generate(
         self,
@@ -62,6 +64,11 @@ class OpenAICompatProvider:
         body = {
             "model": self.model,
             "max_tokens": self.max_tokens,
+            # temperature=0 by default for reproducible output. Safe on this path:
+            # the OpenAI /chat/completions schema and the hai proxy both accept it
+            # (verified). NOT added to AnthropicProvider — the native Messages API
+            # rejects temperature with a 400 on current Claude models.
+            "temperature": self.temperature,
             "messages": [
                 {"role": "system", "content": _prompting.build_system_prompt(schema_hint)},
                 {"role": "user", "content": _prompting.build_user_prompt(prompt, correction)},
