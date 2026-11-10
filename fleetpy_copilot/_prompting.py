@@ -20,7 +20,7 @@ from . import schema
 #: Version of the prompt surface (system + user builders below). Bump whenever the
 #: wording or grounding changes, and add a PROMPT_CHANGELOG.md entry, so a scoreboard
 #: can be attributed to the exact prompt that produced it (M2.5).
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 _SYSTEM = (
     "You translate a natural-language Mobility-on-Demand simulation request into a "
@@ -45,10 +45,19 @@ def build_system_prompt(schema_hint: Optional[Mapping[str, object]] = None) -> s
         return str(schema_hint["text"])
     enums = schema.module_enums()
     enum_lines = "\n".join(f"  {p}: {vals}" for p, vals in sorted(enums.items()))
+    # v2: list ALL valid parameter names, not just the count. Finding A from the
+    # first live baseline: the model invented plausible-but-invalid names
+    # (number_of_vehicles, simulation_time_steps) which validation then dropped.
+    # Giving it the real closed name-set lets it pick correct names (e.g.
+    # op_fleet_composition, start_time/end_time) instead of inventing them.
+    all_names = ", ".join(sorted(schema.VALID_PARAM_NAMES))
     return (
         f"{_SYSTEM}\n\n"
         f"Module-selecting parameters and their ONLY valid values:\n{enum_lines}\n\n"
-        f"There are {len(schema.VALID_PARAM_NAMES)} valid parameter names in total."
+        f"The ONLY valid parameter names ({len(schema.VALID_PARAM_NAMES)} total) are:\n"
+        f"{all_names}\n\n"
+        f"Use a name from this list verbatim or omit it; any other name is invalid "
+        f"and will be discarded."
     )
 
 
