@@ -1,5 +1,5 @@
 """Run the copilot service: ``python -m fleetpy_copilot``."""
-from .service import main
+from .service.service import main
 
 if __name__ == "__main__":
     main()

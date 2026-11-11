@@ -220,6 +220,16 @@ CLAUDE.md
 src/ml_gym/tensorboard/*
 # SDD implementation-loop scratch reports
 fleetpy_copilot/.sdd-loop/
+fleetpy_copilot/.claude
+# local-only design docs (kept outside the repo, copied in for reference)
+fleetpy_copilot/docs/copilot/
+# local-only copilot dev artefacts
+fleetpy_copilot/scripts/
+fleetpy_copilot/requirements.txt
+fleetpy_copilot/PROMPT_CHANGELOG.md
+fleetpy_copilot/tests/inputs.py
+fleetpy_copilot/tests/manual_inner_loop.py
+
 
 # copilot service per-request trace files (service.py COPILOT_TRACE_DIR, default ./logs)
 logs/

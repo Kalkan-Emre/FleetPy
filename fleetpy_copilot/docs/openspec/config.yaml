@@ -1,0 +1,35 @@
+schema: spec-driven-development
+
+# Project context — shown to AI when creating artifacts.
+context: |
+  Project: FleetPy Config Copilot — a single in-tree Python package at `fleetpy_copilot/`
+  that imports FleetPy (`src/`) READ-ONLY and turns natural-language intent into validated,
+  runnable FleetPy config CSVs. Scope = config files only (the user runs the sim).
+
+  Structure: ONE package, no component repos, no `acd/`. Authoritative design docs live in
+  `docs/copilot/` (relative to `fleetpy_copilot/`; 05 = current-state authority; 01 = milestones; 02 = design rationale).
+  As-built modules (now in sub-packages): core/{schema,validate,serialize,dryrun,_fleetpy}, llm/{provider,providers,_prompting,_http}, pipeline/{generate,trace}, service/service. Pipeline: NL → provider → 5-check
+  validate → serialize → dry-run (load in FleetPy), with an inner repair loop (≤2 LLM
+  calls/turn) inside an outer conversation loop (M2.3, multi-turn; controller not built).
+
+  Invariants to preserve: FleetPy `src/` untouched (read-only import); hallucination-proof
+  closed-vocabulary validation is the authority; the Provider is STATELESS and returns a
+  plain {param:value} dict; dry-run (`load_simulation_environment`, never `.run()`) is the
+  gold gate.
+
+  Environment: repo-local `.venv`, Python 3.10; MUST stay env-agnostic (runs under both
+  conda and pip; stdlib + pytest only). A new dependency must be declared in all three
+  manifests: root `requirements.txt`, `environment.yml` (pip: block), and
+  `fleetpy_copilot/requirements-test.txt`.
+
+  Workflow (fleetpy_copilot/WORKFLOW.md): LOCAL-ONLY — never push; commit only tested
+  checkpoints (suite green) on branch `copilot` (branched from `main`). No PRs.
+
+# Per-artifact rules
+rules:
+  proposal:
+    - State which doc-01 milestone (M2.1/M2.2/M2.3/M3.x) the change advances.
+    - Confirm FleetPy src/ stays untouched and the change stays env-agnostic.
+  tasks:
+    - No manifest.yaml, no per-component branches, no PRs/push (local-only).
+    - A group is done only when its tests are written and the full suite passes.
