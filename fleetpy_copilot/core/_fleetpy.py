@@ -13,8 +13,8 @@ from __future__ import annotations
 import os
 import sys
 
-#: repo root (two levels up from this file: fleetpy_copilot/_fleetpy.py -> repo)
-REPO_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#: repo root (three levels up from this file: fleetpy_copilot/core/_fleetpy.py -> repo)
+REPO_ROOT: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 

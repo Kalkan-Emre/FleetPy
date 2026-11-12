@@ -207,6 +207,7 @@ dmypy.json
 
 # other
 CLAUDE.md
+.claude/
 
 # local-only: personal pip env for smoke-testing the copilot on a non-conda laptop.
 /requirements.txt
@@ -228,7 +229,7 @@ fleetpy_copilot/scripts/
 fleetpy_copilot/requirements.txt
 fleetpy_copilot/PROMPT_CHANGELOG.md
 fleetpy_copilot/tests/inputs.py
-fleetpy_copilot/tests/manual_inner_loop.py
+fleetpy_copilot/WORKFLOW.md
 
 
 # copilot service per-request trace files (service.py COPILOT_TRACE_DIR, default ./logs)
